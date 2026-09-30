@@ -47,7 +47,7 @@ def create_specific_pods(
         runpod_cloud_type: str = "COMMUNITY",
         disk_space_in_gb: int = 100,
         volume_space_in_gb: int = 0,
-        docker_image: str = "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+        docker_image: str = "nickypro/arena-env:6.1",
         ports: str = "8888/http,22/tcp",
         volume_mount_path: str = "/workspace"
     ):

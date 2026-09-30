@@ -185,10 +185,10 @@ disable them at the end of the program).
 | `MACHINE_NAME_PREFIX` | Pods are named `<prefix>-<name>`. Something short and specific to your program. |
 | `MACHINE_NAME_LIST` | The names, in order. **Only ever add names at the end:** each name's position decides its proxy port, and participants' configs depend on it. |
 | `RUNPOD_GPU_TYPE`, `RUNPOD_CLOUD_TYPE`, `RUNPOD_NUM_GPUS` | Defaults for `create_pods`. |
-| `RUNPOD_DOCKER_IMAGE` | Pod image. The default is RunPod's official PyTorch image. Any image works if it starts sshd from the `PUBLIC_KEY` environment variable, as RunPod's official images do. |
+| `RUNPOD_DOCKER_IMAGE` | Pod image. The default, `nickypro/arena-env`, is RunPod's PyTorch image with a conda environment (`arena-env`) of common interpretability and ML libraries preinstalled (`transformer_lens`, `transformers`, `datasets`, `einops`, `peft`, …), so pods are ready to work the moment they boot. It also contains a copy of the ARENA course in `/root/ARENA_3.0`, which is harmless if unused. For a smaller, plain image use `runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04` with `POD_PYTHON="python3"`. Any image works if it starts sshd from the `PUBLIC_KEY` environment variable, as RunPod's official images do. |
 | `RUNPOD_DISK_SPACE_IN_GB`, `RUNPOD_VOLUME_SPACE_IN_GB` | Container disk and persistent pod volume sizes. |
 | `POD_SETUP_CMD` | Optional shell command run at every pod start (e.g. `cd /root/course && git pull`). |
-| `POD_PYTHON` | Python on the pods, used by `podcheck`'s GPU check. |
+| `POD_PYTHON` | Python on the pods, used by `podcheck`'s GPU check. Must match the image (`/opt/conda/envs/arena-env/bin/python` for the default). |
 | `POD_ENV_FILE` | Where `deploy_keys` writes keys on each pod. |
 | `KEY_COHORT` | Label for per-pod OpenRouter keys; change it each program. |
 | `SSH_PROXY_HOST`, `SSH_PROXY_STARTING_PORT` | The proxy server's address, and the port for the first name. |

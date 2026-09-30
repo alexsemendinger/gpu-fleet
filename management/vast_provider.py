@@ -16,7 +16,7 @@ Normalized pod dict:
         "cost_per_hr": 0.42,
         "gpu": "RTX A4000",
         "num_gpus": 1,
-        "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+        "image": "nickypro/arena-env:6.1",
         "provider": "vast",
         "id": 1234567,              # Vast instance id (ephemeral across recreate)
     }

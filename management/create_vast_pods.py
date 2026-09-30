@@ -236,7 +236,7 @@ def main():
     num_gpus = args.num_gpus or int(os.getenv("VASTAI_NUM_GPUS", "1"))
     disk = args.disk or int(os.getenv("VASTAI_DISK_SPACE_IN_GB", "100"))
     image = args.image or os.getenv("VASTAI_DOCKER_IMAGE") \
-        or os.getenv("RUNPOD_DOCKER_IMAGE", "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04")
+        or os.getenv("RUNPOD_DOCKER_IMAGE", "nickypro/arena-env:6.1")
     max_price = args.max_price if args.max_price is not None \
         else float(os.getenv("VASTAI_MAX_PRICE", "0.60"))
     query = os.getenv("VASTAI_SEARCH_QUERY") \
