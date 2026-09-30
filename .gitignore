@@ -1,0 +1,8 @@
+# Local secrets and per-program state — never commit these
+config.env
+keys/
+logs/
+management/network_volumes.json
+
+__pycache__/
+*.pyc

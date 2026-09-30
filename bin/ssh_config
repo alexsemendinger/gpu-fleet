@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# ssh_config — print the ~/.ssh/config block participants install
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PY="${PY:-$HOME/.venvs/global/bin/python}"; [ -x "$PY" ] || PY=python3
+cd "$REPO/management" && exec "$PY" ssh_config_proxy.py "$@"

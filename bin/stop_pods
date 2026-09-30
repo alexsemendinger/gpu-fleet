@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# stop_pods — stop running pods on both providers (a stopped pod keeps NO data)
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PY="${PY:-$HOME/.venvs/global/bin/python}"; [ -x "$PY" ] || PY=python3
+cd "$REPO/management" || exit 1
+echo "=== RunPod ==="
+"$PY" stop_pods.py "$@"; rp=$?
+echo
+echo "=== Vast ==="
+if [ -n "$(grep -E '^VASTAI_API_KEY="[^"]+' "$REPO/config.env")" ]; then
+    "$PY" stop_vast_pods.py "$@"; vp=$?
+else
+    echo "(no VASTAI_API_KEY in config.env; skipped)"; vp=0
+fi
+exit $(( rp | vp ))

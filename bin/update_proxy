@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# update_proxy — regenerate the nginx config from live pod IPs and reload nginx
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+exec "$REPO/proxy/update.sh" "$@"

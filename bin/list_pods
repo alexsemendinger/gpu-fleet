@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# list_pods — table of every pod on both providers, with hourly spend
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PY="${PY:-$HOME/.venvs/global/bin/python}"; [ -x "$PY" ] || PY=python3
+cd "$REPO/management" && exec "$PY" list_pods.py "$@"

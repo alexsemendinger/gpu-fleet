@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# create_volume_pod — create a pod on a persistent network volume
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PY="${PY:-$HOME/.venvs/global/bin/python}"; [ -x "$PY" ] || PY=python3
+cd "$REPO/management" && exec "$PY" create_volume_pod.py "$@"
