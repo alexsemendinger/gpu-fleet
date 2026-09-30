@@ -2,6 +2,14 @@
 
 Get a room full of people onto GPUs in minutes.
 
+> **Based on [nickypro/arena-infra](https://github.com/nickypro/arena-infra)**, the
+> infrastructure behind the [ARENA](https://www.arena.education) bootcamps. The whole
+> design comes from it — pre-provisioned pods, one shared SSH key, and an nginx proxy
+> that gives every pod name a permanent port — and so do many of the scripts here,
+> some of them nearly unchanged. gpu-fleet is that project with the ARENA-specific
+> parts removed and changes from running it for later programs added: see
+> [Credits](#credits).
+
 An organizer provisions one GPU pod per person (or pair) before a session starts.
 Participants do a five-minute setup **once** and then connect with `ssh gpu-alder`,
 or with VS Code / Cursor Remote-SSH, every time after that. No provider accounts, no
@@ -220,6 +228,22 @@ The scripts talk to RunPod's REST API (v2) directly through
 
 ## Credits
 
-Built on [nickypro/arena-infra](https://github.com/nickypro/arena-infra), the
-infrastructure behind the [ARENA](https://www.arena.education) bootcamps, and extended
-while running it for later programs.
+gpu-fleet is derived from **[nickypro/arena-infra](https://github.com/nickypro/arena-infra)**
+by Nicky Pochinkov and contributors, the infrastructure behind the [ARENA](https://www.arena.education)
+bootcamps. From arena-infra come the architecture (pods named from a fixed list, a shared
+SSH key, and an nginx stream proxy mapping each name to a permanent port), the diagram, and
+the core scripts: creating, listing, stopping and destroying pods, generating SSH configs,
+and the nginx proxy configuration.
+
+Changes since then, made while running it for later programs:
+- `burst_create_pods`, which retries across GPU types when capacity is tight
+- CUDA health checks (`podcheck`), per-pod bring-up (`pod_pipeline.sh`), `fill_fleet.sh`
+  and `keepalive_pod.sh`
+- Vast.ai support, network-volume pods, `deploy_keys`, per-pod OpenRouter keys, and cost
+  reports
+- a RunPod REST API v2 client (`runpod_compat.py`) replacing the pip SDK, whose GraphQL API
+  RunPod is retiring
+- the ARENA-specific parts taken out (the ARENA image and curriculum hooks, notebook
+  patches, cohort tooling), and settings and docs made program-neutral
+
+arena-infra has no license, so ask its author before sharing or reusing this code.
