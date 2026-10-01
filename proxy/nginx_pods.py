@@ -36,7 +36,7 @@ def list_pods(verbose=False):
     try:
         vast_pods = get_vast_pods(strict=True)
     except Exception as e:  # noqa: BLE001
-        sys.exit(f"nginx_pods: {e}")
+        sys.exit(f"nginx_pods: {e} (not using Vast? set VASTAI_API_KEY=\"\" in config.env)")
 
     try:
         # Sort pods by name

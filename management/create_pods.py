@@ -83,7 +83,8 @@ def used_pod_names():
             if pod.get("name"):
                 used.add(pod["name"])
     except Exception as e:  # noqa: BLE001
-        sys.exit(f"Couldn't list existing Vast.ai pods, so not creating anything: {e}")
+        sys.exit(f"Couldn't list existing Vast.ai pods, so not creating anything: {e}\n"
+                 "Not using Vast? Set VASTAI_API_KEY=\"\" in config.env.")
     return used
 
 
