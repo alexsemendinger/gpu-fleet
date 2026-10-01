@@ -78,9 +78,8 @@ def build_onstart(machine_name, public_key):
     """Onstart script: set -e + echoed steps so SSH-key setup and the
     optional POD_SETUP_CMD hook are visible in Vast's instance logs and
     diagnosable in seconds."""
-    setup = (os.getenv("POD_SETUP_CMD") or "").strip()
-    setup_block = (f"echo '[onstart] running POD_SETUP_CMD'\n({setup}) || true\n"
-                   if setup else "")
+    from pod_boot import vast_onstart_block
+    setup_block = vast_onstart_block()
     return f"""#!/bin/bash
 set -e
 echo '[onstart] START'
