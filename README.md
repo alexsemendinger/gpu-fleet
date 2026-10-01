@@ -40,13 +40,13 @@ them.
 - A **RunPod account** with credit and an API key (Settings → API Keys). Accounts are
   prepaid: turn on auto-top-up, or an empty balance stops every pod mid-session.
 - An **always-on Linux server** with a public IP to be the proxy: any small VPS
-  (1 vCPU / 1 GB is plenty). It needs inbound TCP open for one port per name, starting
+  (1 vCPU / 1 GB is plenty) running Ubuntu 22.04 or 24.04. It needs inbound TCP open for one port per name, starting
   at `SSH_PROXY_STARTING_PORT` (16000–16029 for the default 30 names).
 - Optional: a **Vast.ai** account and API key, as a second source of GPUs.
 
 ## One-time setup (organizer)
 
-Run everything below on the proxy server as a user with sudo (root is simplest).
+Run everything below on the proxy server **as root** (`sudo -i` first if you log in as another user).
 
 ```bash
 # 1. Get the code
@@ -67,7 +67,7 @@ ssh-keygen -t ed25519 -N "" -C "program shared key" -f ~/.ssh/program_shared
 #    ...and make SHARED_SSH_KEY_PATH in config.env match that path.
 
 # 6. Put the commands on your PATH (create_pods, ready_pods, list_pods, ...)
-sudo ./install.sh
+./install.sh
 
 # 7. Let this server reach the pods the same way participants do
 ssh_config >> ~/.ssh/config
@@ -162,8 +162,9 @@ left out. Then run `deploy_keys`. On each pod the keys land in `/root/.env`, are
 loaded into every new shell, and are set in `os.environ` in every Jupyter kernel.
 
 For per-pod OpenRouter keys with individual spending caps,
-`management/generate_openrouter_keys.py` mints them from an OpenRouter provisioning
-key, and `management/openrouter_spend_report.py` reports their spend (and can
+`management/generate_openrouter_keys.py` mints one per name from an OpenRouter
+provisioning key (saved as `keys/.openrouter_provisioning_key`; `--limit` sets the cap),
+and `management/openrouter_spend_report.py` reports their spend (and can
 disable them at the end of the program).
 
 ## Configuration (`config.env`)

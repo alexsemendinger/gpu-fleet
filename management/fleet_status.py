@@ -5,7 +5,7 @@ One line per name, machine-readable, so shell loops can decide what to do:
 
     alder     HAS_IP   1.2.3.4:40123  runpod  RTX A4000
     birch     NO_IP    -              runpod  RTX A5000
-    charles   MISSING  -              -       -
+    cedar     MISSING  -              -       -
 
   MISSING — no instance on either provider; needs creating.
   NO_IP   — instance exists but has no public SSH endpoint yet: still
@@ -66,7 +66,10 @@ def main():
     prefix = os.environ["MACHINE_NAME_PREFIX"]
     names = ast.literal_eval(os.environ["MACHINE_NAME_LIST"])
 
-    rp = runpod_endpoints()
+    try:
+        rp = runpod_endpoints()
+    except Exception as e:  # noqa: BLE001
+        sys.exit(f"fleet_status: could not list RunPod pods: {e}")
     try:
         vs = vast_endpoints()
     except Exception:  # Vast unreachable shouldn't blind us to RunPod

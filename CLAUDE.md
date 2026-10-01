@@ -54,11 +54,17 @@ more on unused names; or positional names, bare (`alder`) or prefixed (`gpu-alde
 A selection is required. Retries continuously, in parallel, rotating through every
 NVIDIA GPU type at or under `--max-price` (per GPU, default 0.50), with
 `RUNPOD_GPU_TYPE` tried first. Options: `--gpu-types "NVIDIA A40,NVIDIA L40S"` (only
-these), `--gpu-count N`, `--cloud COMMUNITY|SECURE`, `--image`, `--disk N`,
-`--volume N`, `--timeout` (default 1800s). Defaults come from `config.env`. No
-prompt. Prints `[OK] <pod> <- <gpu>` as each lands and a progress line every 15s;
-expect hundreds of silent retries when capacity is scarce. Don't pipe its output
-through anything that closes stdout early (`head`).
+these, still capped by `--max-price`), `--gpu-count N`, `--cloud COMMUNITY|SECURE`, `--image`, `--disk N`,
+`--volume N`, `--data-centers US-NE-1,US-CA-2`, `--timeout` (default 1800s).
+Defaults come from `config.env`. No prompt. Only names in `MACHINE_NAME_LIST` are
+accepted. Prints `[OK] <pod> <- <gpu>` as each lands and a progress line every 15s;
+expect hundreds of silent retries when capacity is scarce. Capacity errors, rate
+limits and network/server errors are retried (after a lost response it checks
+whether the pod got created before retrying); a request RunPod rejects outright
+(bad field, auth, no credit) prints `[FAILED]` at once. If listing existing pods
+fails it creates nothing. Exits 1 unless every pod landed. Ctrl-C stops all
+workers and lists what was already created. Don't pipe its output through
+anything that closes stdout early (`head`).
 
 **`ready_pods [names...]`** — takes new pods to "ready", each independently and in
 parallel: waits for a public IP, runs `update_proxy` (serialized), runs `check_pods`,
@@ -85,21 +91,27 @@ port order and the order of participants' SSH config.
 **`pod_costs`** — per-pod uptime and estimated spend so far, from each provider's
 real start time. est$ = rate × uptime (approximate).
 
-**`create_vast_pods`** — Vast.ai. Same selection flags as `create_pods`, but tries
-once per name. `--gpu-name RTX_3090` (underscores), `--num-gpus`, `--disk`,
-`--image`, `--max-price` (default $0.60/hr).
+**`create_vast_pods`** — Vast.ai (needs `VASTAI_API_KEY` in `config.env`). Same
+`-n`/`-a`/names selection as `create_pods`, but tries once per name and asks
+`(y/N)` before creating (pipe `printf 'y\n' |` when scripting). `--gpu-name RTX_3090`
+(underscores), `--num-gpus`, `--disk`, `--image`, `--max-price` (default $0.60/hr).
 
 **`create_volume_pod <name>`** — a SECURE pod on a persistent network volume; see
-`NETWORK_VOLUMES.md`. Re-running with the same name reuses the same volume.
+`NETWORK_VOLUMES.md`. A new pod needs `--gpu-type` (and `--data-center` for a new
+volume); re-running with just the name rebuilds it from `network_volumes.json` on the
+same volume. Retries while its datacenter has no capacity (`--timeout`, default 600s).
 
-**`deploy_keys`** (→ `management/copy_api_keys.py`) — see below. `--pod <prefix>-X`
-(repeatable) restricts it; `--max-parallel N` (default 30).
+**`deploy_keys`** (→ `management/copy_api_keys.py`) — see below. `--pod <name>`
+(bare or prefixed, repeatable) restricts it; `--max-parallel N` (default 30).
+Exits 1 if any requested pod isn't online or any deploy failed.
 
 **`update_proxy`** — regenerates the nginx config from live pod IPs and reloads nginx.
 If the new config fails `nginx -t`, the old one stays in place.
 
 **`ssh_config`** — prints the `~/.ssh/config` block participants install (one `Host`
-per name, each pinned to its proxy port).
+per name, each pinned to its proxy port; `IdentityFile ~/.ssh/<key filename>`, and
+`ServerAliveInterval 60` so idle sessions stay up). The proxy also sets
+`proxy_timeout 24h`, since nginx's default would cut sessions idle for 10 minutes.
 
 **`show_key`** — prints the shared private SSH key to hand to participants.
 
@@ -134,8 +146,10 @@ and missing CSVs are skipped silently.
   key, saved as `keys/<provider>_api_keys.csv`, then `deploy_keys`. Ask the organizer
   for the key string — never invent one.
 - **Per-pod OpenRouter keys** → `management/generate_openrouter_keys.py` mints one
-  capped key per name into `keys/openrouter_api_keys.csv` (needs the provisioning key
-  in `keys/.openrouter_provisioning_key`).
+  capped key per name in `MACHINE_NAME_LIST` into `keys/openrouter_api_keys.csv`
+  (needs the provisioning key in `keys/.openrouter_provisioning_key`; `--limit` sets
+  the $ cap per key, default 10). It checks the provisioning key first and won't
+  replace an existing CSV without `--force`.
 
 ---
 

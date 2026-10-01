@@ -36,12 +36,14 @@ warnings.filterwarnings("ignore", message=r".*show_instances\(\) is deprecated.*
 def get_vast_client():
     """Return an authenticated VastAI client.
 
-    Prefers the VASTAI_API_KEY from config.env so behaviour matches the rest
-    of the repo; falls back to the SDK's own resolution (`vastai set api-key`).
+    Uses VASTAI_API_KEY from config.env only (not the SDK's own `vastai set
+    api-key` store), so every command agrees on whether Vast is in use.
     """
     from vastai import VastAI
     api_key = os.getenv("VASTAI_API_KEY")
-    return VastAI(api_key=api_key) if api_key else VastAI()
+    if not api_key:
+        raise RuntimeError("VASTAI_API_KEY is not set in config.env")
+    return VastAI(api_key=api_key)
 
 
 def _extract_ip_port(inst):
@@ -95,16 +97,21 @@ def _redact(err):
     return re.sub(r"(api_key=)[^&\s'\"]+", r"\1<redacted>", str(err))
 
 
-def get_vast_pods(client=None):
+def get_vast_pods(client=None, strict=False):
     """Return normalized pods for all of this account's Vast instances.
 
-    Returns [] (and prints a warning) on any auth/API failure so a Vast
-    outage never breaks the RunPod path in the callers.
+    No VASTAI_API_KEY means Vast isn't in use: [] silently. On an auth/API
+    failure, returns [] with a warning so a Vast outage never breaks the
+    RunPod path in the callers.
     """
+    if not os.getenv("VASTAI_API_KEY"):
+        return []
     try:
         client = client or get_vast_client()
         instances = client.show_instances()
     except Exception as e:  # noqa: BLE001 - never let Vast break RunPod listing
+        if strict:
+            raise RuntimeError(f"failed to fetch Vast.ai instances: {_redact(e)}") from None
         print(f"# Warning: failed to fetch Vast.ai instances: {_redact(e)}")
         return []
 

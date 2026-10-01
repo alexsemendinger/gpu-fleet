@@ -147,7 +147,7 @@ def get_live_endpoints():
                 if name and ip and port:
                     endpoints[name] = (ip, str(port))
         except Exception as e:
-            print(f"# Warning: RunPod lookup failed: {e}", file=sys.stderr)
+            sys.exit(f"RunPod lookup failed, so no keys were deployed: {e}")
     else:
         print("# Warning: RUNPOD_API_KEY not set; skipping RunPod pods",
               file=sys.stderr)
@@ -267,15 +267,21 @@ def main():
         return 1
 
     print("\nResolving live pod endpoints (RunPod + Vast)...")
-    endpoints = get_live_endpoints()
+    # Only this fleet's pods: never SSH into other pods on the account.
+    endpoints = {n: e for n, e in get_live_endpoints().items()
+                 if n.startswith(MACHINE_PREFIX + "-")}
     print(f"  {len(endpoints)} pod(s) online")
 
     if args.pod:
-        wanted = set(args.pod)
+        from pod_names import to_full
+        wanted = {to_full(p) for p in args.pod}
         filtered = {n: e for n, e in endpoints.items() if n in wanted}
-        for missing in sorted(wanted - set(filtered.keys())):
-            print(f"  warning: requested pod {missing!r} not currently online")
+        not_online = sorted(wanted - set(filtered.keys()))
+        for missing in not_online:
+            print(f"  ERROR: requested pod {missing!r} is not online (no SSH endpoint yet?)")
         endpoints = filtered
+        if not_online:
+            return 1
 
     if not endpoints:
         print("\nNo pods to deploy to. Exiting.")

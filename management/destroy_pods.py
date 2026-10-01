@@ -50,7 +50,10 @@ def main():
         ap.error("name the pods to destroy, or pass --all (not both)")
 
     exclude = {to_full(n) for n in args.exclude}
-    pods = fleet()
+    try:
+        pods = fleet()
+    except Exception as e:  # noqa: BLE001
+        sys.exit(f"Couldn't list pods, so nothing was destroyed: {e}")
     if args.all:
         targets = [p for p in pods if p[1].startswith(PREFIX) and p[1] not in exclude]
         others = sorted({p[1] for p in pods if not p[1].startswith(PREFIX)})
@@ -92,7 +95,10 @@ def main():
 
     # Confirm against the provider rather than trusting the calls.
     time.sleep(5)
-    left = {p[1] for p in fleet()} & {t[1] for t in targets}
+    try:
+        left = {p[1] for p in fleet()} & {t[1] for t in targets}
+    except Exception as e:  # noqa: BLE001
+        sys.exit(f"Destroy requests sent, but couldn't re-list pods to confirm: {e}")
     if left:
         print(f"Still present after destroy (re-run to retry): {', '.join(sorted(left))}")
         failures += 1

@@ -45,6 +45,17 @@ class RunPodError(Exception):
         super().__init__(f"HTTP {status} {title}: {detail} [{path}]")
 
 
+# Substrings of create errors that mean "no capacity for this request right
+# now": retry, ideally with another GPU type. Anything else is a real error.
+CAPACITY_ERRORS = ("no longer any instances", "no instances available",
+                   "does not have the resources", "insufficient capacity",
+                   "no capacity", "unavailable")
+
+
+def is_capacity_error(exc):
+    return any(k in str(exc).lower() for k in CAPACITY_ERRORS)
+
+
 def _call(method, path, body=None, timeout=60):
     if not api_key:
         raise RunPodError(0, "config", "runpod_compat.api_key is not set", path)
@@ -101,7 +112,12 @@ _STATUS = {"PROVISIONING": "RUNNING", "STARTING": "RUNNING"}
 def _legacy_pod(p):
     gpu = p.get("gpu") or {}
     gpu_id = gpu.get("id")
-    cat = _catalog().get(gpu_id) if gpu_id else None
+    # Display name only: a catalog failure must never turn a pod we already
+    # have (e.g. one just created) into an exception.
+    try:
+        cat = _catalog().get(gpu_id) if gpu_id else None
+    except Exception:  # noqa: BLE001
+        cat = None
     display = (cat or {}).get("name") or gpu_id
 
     runtime = None
@@ -202,7 +218,8 @@ def create_pod(name, image_name, gpu_type_id, cloud_type="SECURE", gpu_count=1,
     if mounts:
         body["mounts"] = mounts
     if data_center_id:
-        body["dataCenterIds"] = [data_center_id]
+        body["dataCenterIds"] = ([data_center_id] if isinstance(data_center_id, str)
+                                 else list(data_center_id))
     if ports:
         body["ports"] = ports.split(",") if isinstance(ports, str) else list(ports)
     if env:

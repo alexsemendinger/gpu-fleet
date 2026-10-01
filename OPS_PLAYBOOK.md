@@ -20,8 +20,8 @@ and leaves no pod.
 far faster than one. Keep the first that becomes *usable*, terminate the other. It is
 common for one twin to be ready in under three minutes while the other never comes up.
 
-**Try datacenters near your participants first.** Pin `data_center_id` explicitly when
-you care where it lands.
+**Try datacenters near your participants first.** `create_pods --data-centers
+US-NE-1,US-CA-2` restricts where pods land when you care.
 
 **Prefer COMMUNITY, fall back to SECURE.** Community is ~20–35% cheaper for the same card.
 Volume-backed pods are SECURE-only.
@@ -79,12 +79,11 @@ in its own datacenter. Adding one later means destroying and rebuilding the pod.
 are simply not deployed in some datacenters, regardless of stock. `NETWORK_VOLUMES.md` has
 the catalog query that intersects volume support with GPU availability.
 
-**Pin volumes by `--volume-id`, always.** `create_volume_pod` derives the volume *name*
-from the pod name, so it records `<prefix>-<pod>-vol` even when you attached a shared
-volume. Patch `management/network_volumes.json` after every shared-volume create: set
-`network_volume_name`, `network_volume_id`, `volume_size_gb`, and a `recreate_cmd` that
-carries `--volume-id`. A name-based recreate silently creates a NEW EMPTY volume and
-hands the group a blank disk.
+**Recreate volume pods with `create_volume_pod <name>`, never by hand.** It rebuilds
+from `management/network_volumes.json`, which pins the volume by id. To attach a
+volume another pod already uses, pass `--volume-id` on that pod's first create; the
+registry then remembers it. Anything else (say `create_pods` with the same name, or
+creating a fresh volume by name) gives the group a NEW EMPTY disk.
 
 **Share one volume across pods freely.** Concurrent read-write from several pods works.
 Tell groups to use per-person subdirectories for anything they write; simultaneous writes

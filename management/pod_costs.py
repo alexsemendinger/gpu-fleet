@@ -29,11 +29,13 @@ def dur(sec):
 rows = []  # name, prov, gpu, rate, start, uptime_s, spend
 
 # --- RunPod: one REST v2 call carries status, cost, createdAt, GPU type ---
+fetch_failed = False
 try:
     rp_pods = runpod.get_pods() or []
 except Exception as e:  # noqa: BLE001
-    print(f"# runpod fetch failed: {e}")
+    print(f"# ERROR: runpod fetch failed: {e}")
     rp_pods = []
+    fetch_failed = True
 for p in rp_pods:
     if p.get("desiredStatus") != "RUNNING":
         continue
@@ -45,8 +47,10 @@ for p in rp_pods:
     rows.append([to_bare(p["name"]), "runpod", gpu, rate, start, up,
                  rate * up / 3600 if up else None])
 
-# --- Vast (raw instances, for start_date/dph_total) ---
+# --- Vast (raw instances, for start_date/dph_total), only if configured ---
 try:
+    if not os.getenv("VASTAI_API_KEY"):
+        raise LookupError  # Vast not in use
     from vast_provider import get_vast_client
     c = get_vast_client()
     insts = c.show_instances()
@@ -61,8 +65,11 @@ try:
         gpu = f"{i.get('num_gpus', '?')}x {i.get('gpu_name', '?')}"
         rows.append([label, "vast", gpu, rate, start, up,
                      rate * up / 3600 if up else None])
+except LookupError:
+    pass
 except Exception as e:  # noqa: BLE001
-    print(f"# vast fetch failed: {e}")
+    from vast_provider import _redact
+    print(f"# vast fetch failed: {_redact(e)}")
 
 # Order by position in MACHINE_NAME_LIST (== proxy port map == the ssh config
 # participants install), so this table reads the same top-down order as
@@ -72,15 +79,18 @@ try:
 except Exception:  # noqa: BLE001
     _order = {}
 rows.sort(key=lambda r: (_order.get(r[0], len(_order)), r[0]))
-print(f"Fleet report @ {NOW:%Y-%m-%d %H:%M} UTC   (est$ = rate x uptime, approximate)")
-print(f"{'pod':11} {'prov':6} {'gpu':30} {'$/hr':>6} {'started UTC':12} {'uptime':>8} {'est$':>6}")
-print("-" * 84)
+print(f"Pod costs @ {NOW:%Y-%m-%d %H:%M} UTC   (est$ = rate x uptime, approximate)")
+W = max([len(r[0]) for r in rows] + [11])   # name column fits the longest name
+print(f"{'pod':{W}} {'prov':6} {'gpu':30} {'$/hr':>6} {'started UTC':12} {'uptime':>8} {'est$':>8}")
+print("-" * (W + 75))
 tot_rate = tot_spend = 0.0
 for name, prov, gpu, rate, start, up, spend in rows:
     s = f"{start:%m-%d %H:%M}" if start else "?"
-    print(f"{name:11} {prov:6} {gpu[:30]:30} {rate:6.2f} {s:12} {dur(up):>8} "
-          f"{('$'+format(spend,'.0f')) if spend is not None else '?':>6}")
+    print(f"{name:{W}} {prov:6} {gpu[:30]:30} {rate:6.2f} {s:12} {dur(up):>8} "
+          f"{('$'+format(spend,'.2f')) if spend is not None else '?':>8}")
     tot_rate += rate
     tot_spend += spend or 0
-print("-" * 84)
-print(f"{'TOTAL':11} {'':6} {'':30} {tot_rate:6.2f} {'':12} {'':>8} ${tot_spend:.0f}")
+print("-" * (W + 75))
+print(f"{'TOTAL':{W}} {'':6} {'':30} {tot_rate:6.2f} {'':12} {'':>8} {'$'+format(tot_spend,'.2f'):>8}")
+if fetch_failed:
+    raise SystemExit(1)

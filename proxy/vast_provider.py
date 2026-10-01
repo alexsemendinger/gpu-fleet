@@ -12,6 +12,7 @@ Vast REST: GET https://console.vast.ai/api/v0/instances?owner=me
 import json
 import os
 import re
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -67,15 +68,15 @@ def _redact(err):
     return re.sub(r"(api_key=)[^&\s'\"]+", r"\1<redacted>", str(err))
 
 
-def get_vast_pods():
+def get_vast_pods(strict=False):
     """Return normalized pods for all Vast instances on this account.
 
-    Returns [] (with a warning) on any failure so a Vast outage never breaks
-    the RunPod proxy config generation.
+    No VASTAI_API_KEY means Vast isn't in use: [] silently. On a fetch
+    failure, returns [] with a warning on stderr, or raises if strict (the
+    proxy generator must not mistake an outage for an empty fleet).
     """
     api_key = os.getenv("VASTAI_API_KEY")
     if not api_key:
-        print("# Warning: VASTAI_API_KEY not set; skipping Vast.ai instances")
         return []
 
     query = urllib.parse.urlencode({"owner": "me", "api_key": api_key})
@@ -93,11 +94,15 @@ def get_vast_pods():
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")
-        print(f"# Warning: Vast.ai HTTP {e.code}: {body[:200]}")
+        msg = f"Vast.ai HTTP {e.code}: {_redact(e.read().decode('utf-8', 'replace')[:200])}"
+        if strict:
+            raise RuntimeError(msg) from None
+        print(f"# Warning: {msg}", file=sys.stderr)
         return []
     except Exception as e:  # noqa: BLE001
-        print(f"# Warning: failed to fetch Vast.ai instances: {_redact(e)}")
+        if strict:
+            raise RuntimeError(f"failed to fetch Vast.ai instances: {_redact(e)}") from None
+        print(f"# Warning: failed to fetch Vast.ai instances: {_redact(e)}", file=sys.stderr)
         return []
 
     instances = data.get("instances") or []
@@ -106,7 +111,7 @@ def get_vast_pods():
         try:
             pods.append(normalize_instance(inst))
         except Exception as e:  # noqa: BLE001
-            print(f"# Warning: failed to normalize a Vast instance: {e}")
+            print(f"# Warning: failed to normalize a Vast instance: {e}", file=sys.stderr)
     return pods
 
 

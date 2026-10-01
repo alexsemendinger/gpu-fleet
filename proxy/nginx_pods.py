@@ -3,17 +3,17 @@ import os
 import sys
 import ast
 
-from mydotenv import load_env
+# mydotenv and runpod_compat live in management/. Put it right after this
+# script's own dir (sys.path[0]): proxy/ keeps its own dependency-free
+# vast_provider, which must still win, and management/ must come before
+# site-packages, where unrelated packages with the same names may exist.
+sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "management"))
+from mydotenv import load_env  # noqa: E402
 load_env()
 
-from vast_provider import get_vast_pods
-
-# runpod_compat (REST v2 client, legacy-GraphQL-shaped results) lives in
-# management/; proxy/ keeps its own mydotenv/vast_provider copies, which win
-# on name lookup because the script dir leads sys.path — append, don't insert.
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "..", "management"))
-import runpod_compat
+from vast_provider import get_vast_pods  # noqa: E402  (proxy/vast_provider.py)
+import runpod_compat  # noqa: E402
 
 
 def get_pods(api_key):
@@ -22,28 +22,21 @@ def get_pods(api_key):
     return runpod_compat.get_pods()
 
 def list_pods(verbose=False):
-    # Fetch RunPod pods (best-effort: a RunPod outage must not drop Vast hosts
-    # from the generated proxy config)
+    # A provider that fails to answer must FAIL generation (exit nonzero), not
+    # look like an empty fleet: update.sh would otherwise install a config
+    # with no routes and drop every participant's connection. An empty fleet
+    # is fine and still yields a valid (route-less) config.
     api_key = os.getenv("RUNPOD_API_KEY")
-    pods = []
     if not api_key:
-        print("# Warning: RUNPOD_API_KEY not set; skipping RunPod pods")
-    else:
-        try:
-            if verbose:
-                print("# Fetching pods...")
-            pods = get_pods(api_key) or []
-        except Exception as e:
-            print(f"# Warning: failed to fetch RunPod pods: {e}")
-            pods = []
-
-    # Fetch Vast pods (best-effort; [] with a warning on failure)
-    vast_pods = get_vast_pods()
-
-    if not pods and not vast_pods:
-        if verbose:
-            print("# No pods found")
-        return
+        sys.exit("nginx_pods: RUNPOD_API_KEY not set in config.env")
+    try:
+        pods = get_pods(api_key) or []
+    except Exception as e:  # noqa: BLE001
+        sys.exit(f"nginx_pods: failed to fetch RunPod pods: {e}")
+    try:
+        vast_pods = get_vast_pods(strict=True)
+    except Exception as e:  # noqa: BLE001
+        sys.exit(f"nginx_pods: {e}")
 
     try:
         # Sort pods by name
@@ -74,7 +67,7 @@ def list_pods(verbose=False):
                 if pod_name == pod_name_to_check:
                     try:
                         # Get runtime ports
-                        runtime = pod.get('runtime', {})
+                        runtime = pod.get('runtime') or {}
                         ports = runtime.get('ports', [])
 
                         # Find SSH port and IP
@@ -126,7 +119,9 @@ def list_pods(verbose=False):
         for machine_name in sorted(found_pods.keys(), key=lambda x: machine_name_list.index(x)):
             data = found_pods[machine_name]
             print(f"upstream {machine_name} {{ server {data['ip']}:{data['port']}; }}")
-            print(f"server {{ listen {data['listen_port']}; proxy_pass {machine_name}; }}")
+            # proxy_timeout: nginx's stream default (10m) cuts SSH sessions that
+            # are silent for 10 minutes, e.g. a quiet training run.
+            print(f"server {{ listen {data['listen_port']}; proxy_pass {machine_name}; proxy_timeout 24h; }}")
             print()
 
         # Print table if verbose mode (after nginx config)
@@ -138,7 +133,7 @@ def list_pods(verbose=False):
             for pod in pods:
                 try:
                     # Get SSH port and IP
-                    runtime = pod.get('runtime', {})
+                    runtime = pod.get('runtime') or {}
                     ports = runtime.get('ports', [])
 
                     ssh_port = 'N/A'
@@ -176,8 +171,7 @@ def list_pods(verbose=False):
 
                     print(f"{public_ip:<16} {ssh_port:<10} {cost:<10} {status_time:<28} {pod.get('name', 'N/A'):<15} {status:<15} {gpu_count_str:<6} {gpu_name:<20} {image_name:<30}")
                 except Exception as e:
-                    print(f"# Error processing pod: {e}")
-                    print(pod)
+                    print(f"# Error processing pod {pod.get('name')}: {e}", file=sys.stderr)
 
             # Vast.ai rows (appended to the same table)
             for vp in sorted(vast_pods, key=lambda x: x["name"] or ""):
@@ -195,8 +189,8 @@ def list_pods(verbose=False):
 
             print("="*140 + "\n")
 
-    except Exception as e:
-        print(f"# Error: {str(e)}")
+    except Exception as e:  # noqa: BLE001 — never hand update.sh a partial config
+        sys.exit(f"nginx_pods: config generation failed: {e}")
 
 if __name__ == "__main__":
     # Check for -v flag

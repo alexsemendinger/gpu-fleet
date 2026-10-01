@@ -19,8 +19,9 @@ verify() {  # verify <pod>
     [ \"\$ok\" = 1 ] && echo VERIFY_OK"
 }
 
-SEED="${1:?usage: RELAY_DIRS=\"...\" tree_relay.sh <source> <target...>}"; shift
-sources=("$SEED"); queue=("$@")
+SEED="${1:?usage: RELAY_DIRS="..." tree_relay.sh <source> <target...>}"; shift
+sources=("$SEED"); queue=("$@"); failed=()
+declare -A tries
 round=1
 while [ "${#queue[@]}" -gt 0 ]; do
   n=$(( ${#sources[@]} < ${#queue[@]} ? ${#sources[@]} : ${#queue[@]} ))
@@ -33,10 +34,17 @@ while [ "${#queue[@]}" -gt 0 ]; do
         && echo "[relay] $dst OK (from $src)" || { echo "[relay] $dst FAILED (from $src)"; exit 1; } ) &
     pids+=($!); dsts+=("$dst")
   done
+  retry=0
   for i in $(seq 0 $((n-1))); do
-    if wait "${pids[$i]}"; then sources+=("${dsts[$i]}"); else queue+=("${dsts[$i]}"); echo "[relay] requeued ${dsts[$i]}"; fi
+    d="${dsts[$i]}"
+    if wait "${pids[$i]}"; then sources+=("$d"); continue; fi
+    tries[$d]=$(( ${tries[$d]:-0} + 1 ))
+    if [ "${tries[$d]}" -lt 3 ]; then queue+=("$d"); retry=1; echo "[relay] will retry $d (attempt ${tries[$d]}/3 failed)"
+    else failed+=("$d"); echo "[relay] giving up on $d after 3 attempts"; fi
   done
+  # A failure is often a pod that isn't reachable yet: pause before retrying it.
+  [ "$retry" = 1 ] && sleep 20
   round=$((round+1))
-  [ "$round" -gt 12 ] && { echo "too many rounds, aborting"; exit 1; }
 done
-echo "TREE RELAY COMPLETE: ${sources[*]}"
+echo "TREE RELAY DONE: ok: ${sources[*]:1}${failed:+ | FAILED: ${failed[*]}}"
+[ "${#failed[@]}" -eq 0 ]

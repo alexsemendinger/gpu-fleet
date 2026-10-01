@@ -25,6 +25,18 @@ if [ -z "$NGINX" ]; then
 fi
 SYSTEMCTL="$(command -v systemctl 2>/dev/null || echo /usr/bin/systemctl)"
 
+# Reload via systemd where it runs (a normal VPS); otherwise (containers, WSL)
+# signal nginx directly, starting it if it isn't running yet.
+reload_nginx() {
+    if [ -d /run/systemd/system ]; then
+        "$SYSTEMCTL" reload-or-restart nginx
+    elif [ -s /run/nginx.pid ] && kill -0 "$(cat /run/nginx.pid)" 2>/dev/null; then
+        "$NGINX" -s reload
+    else
+        "$NGINX"
+    fi
+}
+
 if ! "$PY" "$HERE/nginx_pods.py" > "$CONF.new" || [ ! -s "$CONF.new" ]; then
     echo "update_proxy: config generation failed; nginx left untouched" >&2
     rm -f "$CONF.new"
@@ -40,5 +52,5 @@ if ! "$NGINX" -t; then
     exit 1
 fi
 
-"$SYSTEMCTL" reload-or-restart nginx
+reload_nginx
 echo "update_proxy: nginx reloaded ($(grep -c '^upstream' "$CONF") pods routed)"

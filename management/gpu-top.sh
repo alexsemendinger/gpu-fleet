@@ -2,11 +2,12 @@
 set -euo pipefail
 
 # Load MACHINE_NAME_LIST (array) and MACHINE_NAME_PREFIX from ../config.env
-source "$(dirname "$0")/../config.env"
+# shellcheck disable=SC1090
+source <(tr -d '\r' < "$(dirname "$0")/../config.env")
 
 INTERVAL="${1:-2}"
 CONCURRENCY="${CONCURRENCY:-8}"
-GPU_MODEL_WIDTH="${GPU_MODEL_WIDTH:-8}"   # width for short model name (e.g., A4000, A100-80GB)
+GPU_MODEL_WIDTH="${GPU_MODEL_WIDTH:-10}"  # width for short model name (e.g., A4000, A100-80GB)
 
 SSH_OPTS=(
   -o BatchMode=yes
@@ -68,14 +69,13 @@ while true; do
     f="$tmpdir/$(echo "$h" | tr '/:' '__').csv"
     awk -v FS=',' -v host="$h" -v hostw="$HOST_W" -v modelw="$GPU_MODEL_WIDTH" '
       function trim(s){ gsub(/^ +| +$/,"",s); return s }
-      function shortname(name,  s,m,a,n,i){
+      # POSIX awk only (Ubuntu ships mawk): "NVIDIA RTX A4000" -> "A4000",
+      # "NVIDIA GeForce RTX 3090" -> "3090", "NVIDIA A100 80GB PCIe" -> "A100-80GB-PCIe"
+      function shortname(name,  s){
         s=trim(name)
-        if (match(s, /(A[0-9]{3,4})([- ]([0-9]+GB))?/, m)) return (m[3]!="") ? m[1] "-" m[3] : m[1]
-        if (match(s, /(RTX[ ]?[0-9]{3,4}(?:[ ]?Ti|[ ]?SUPER)?)/, m)) { gsub(/[ ]+/,"",m[1]); return m[1] }
-        n=split(s,a,/[[:space:]]+/)
-        for(i=n;i>=2;i--) if(a[i] ~ /^[0-9]+GB$/ && a[i-1] ~ /(A[0-9]{3,4}|[3-9][0-9]{2,4}(Ti)?)$/) return a[i-1] "-" a[i]
-        for(i=n;i>=1;i--) if(a[i] ~ /([A-Za-z].*[0-9]|[0-9].*[A-Za-z]|-)/) return a[i]
-        return a[n]
+        sub(/^NVIDIA /,"",s); sub(/^GeForce /,"",s); sub(/^RTX /,"",s)
+        gsub(/ +/,"-",s)
+        return s
       }
       {
         for(i=1;i<=NF;i++) $i=trim($i)
@@ -86,8 +86,8 @@ while true; do
         util     = $5 + 0
 
         # Format: g0 <MODEL> <UTIL%> <USED/TOTAL>  (e.g., "g0 A4000   0%  0.0/16")
-        # total printed as integer if whole, else 1 decimal
-        totalStr = (int(totalGBf)==totalGBf) ? sprintf("%.0f", totalGBf) : sprintf("%.1f", totalGBf)
+        # total in whole GB
+        totalStr = sprintf("%.0f", totalGBf)
         line = sprintf("g%-2d %-*.*s %3.0f%% %4.1f/%s", idx, modelw, modelw, model, util, usedGB, totalStr)
 
         lines[idx] = line

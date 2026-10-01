@@ -9,7 +9,7 @@ if [ ! -f "$REPO/config.env" ]; then
     exit 1
 fi
 # shellcheck disable=SC1091
-source "$REPO/config.env"
+source <(tr -d '\r' < "$REPO/config.env")   # tolerate Windows line endings
 PREFIX="${MACHINE_NAME_PREFIX:?set MACHINE_NAME_PREFIX in config.env}"
 # Python on the pods, used for the CUDA check.
 POD_PYTHON="${POD_PYTHON:-python3}"

@@ -19,7 +19,12 @@ check_pods() {
     if [ $# -eq 0 ]; then
         # Only names that have a pod right now: checking the whole list would
         # report every never-created name as "unreachable".
-        mapfile -t to_test < <(cd "$MGMT" && "$PY" fleet_status.py 2>/dev/null | awk '$1 !~ /^#/ && $2 != "MISSING" {print $1}')
+        local fs
+        if ! fs=$(cd "$MGMT" && "$PY" fleet_status.py 2>&1); then
+            echo "Could not list pods: $(tail -1 <<<"$fs")" >&2
+            return 1
+        fi
+        mapfile -t to_test < <(awk '$1 !~ /^#/ && $2 != "MISSING" {print $1}' <<<"$fs")
         if [ "${#to_test[@]}" -eq 0 ]; then
             echo "No pods exist right now (nothing to check)."
             return 0

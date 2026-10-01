@@ -244,6 +244,8 @@ def main():
         or f"gpu_name={gpu_name} num_gpus={num_gpus} verified=True rentable=True"
 
     public_key = read_public_key()
+    if not os.getenv("VASTAI_API_KEY"):
+        sys.exit("VASTAI_API_KEY is not set in config.env; Vast.ai is optional, see README.")
     client = get_vast_client()
     used_full_names = get_used_pod_names(client)
 

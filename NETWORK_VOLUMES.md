@@ -29,12 +29,18 @@ create_volume_pod oak \
 
 `create_volume_pod` (→ `management/create_volume_pod.py`) does three things:
 
-1. **Find-or-create** a volume named `<prefix>-<name>-vol`. If it already exists
-   it is reused (and its datacenter wins, since volumes are region-locked).
+1. **Find-or-create** a volume named `<prefix>-<name>-vol` (or uses the one you
+   pin with `--volume-id`, e.g. a volume shared by several pods). An existing
+   volume is reused, and its datacenter wins, since volumes are region-locked.
 2. **Create a SECURE on-demand pod** in the volume's datacenter with the volume
-   attached at `--mount` (default `/workspace`), plus the requested GPU / vCPU /
-   RAM and an ephemeral `--disk` (default 100 GB) for the OS/image.
+   attached at `--mount` (default `/workspace`), plus the GPU you name
+   (`--gpu-type` is required for a new pod), minimum vCPU/RAM (default 8 / 32 GB)
+   and an ephemeral `--disk` (default 100 GB) for the OS/image. If the
+   datacenter has no capacity it keeps retrying for `--timeout` (default 10 min).
 3. **Record** the pod → volume mapping in `network_volumes.json`.
+
+If the pod can't be created after a new volume was made, it says so: the volume
+still exists and is billed until deleted, and re-running reuses it.
 
 Then `ready_pods <name>` (waits for the IP, updates the proxy, checks the pod).
 
@@ -62,16 +68,17 @@ PY
 
 ## Recreate one on its existing data
 
-Just run the same command with the same pod name — the volume is matched by
-name and reused, so the data is intact:
+Run it again with just the pod name. It rebuilds the pod from its entry in
+`network_volumes.json`: the same volume (pinned by id, so a shared volume stays
+shared), GPU, count, vCPU/RAM, disk, cloud and mount. Any flag you pass
+overrides the recorded value, e.g. a bigger GPU on the same data:
 
 ```bash
-create_volume_pod oak           # reuses gpu-oak-vol in its datacenter
+create_volume_pod oak                                  # same spec, same data
+create_volume_pod oak --gpu-type "NVIDIA A100-SXM4-80GB"   # same data, different GPU
 ```
 
-`network_volumes.json` has the full spec (GPU, datacenter, vCPU, RAM) if you
-need to reconstruct the flags, and a `recreate_cmd` field for each pod. You can
-also pin a volume explicitly with `--volume-id <id>`.
+Each entry also carries a `recreate_cmd` with every flag spelled out.
 
 ## Volumes are managed via REST v2
 
@@ -101,15 +108,15 @@ when a project truly ends, delete the volume by hand and drop its row from
 
 `create_pods` covers most of this already, with retries: SECURE cloud (`--cloud
 SECURE`), multi-GPU (`--gpu-count`), specific types (`--gpu-types`) and big container
-disks (`--disk`). Only a pod on a network volume needs `create_volume_pod`, and that
-tries once. When a volume pod's GPU is scarce, drive `runpod_compat.create_pod` (REST
-v2) yourself in a **retry loop**. Every failed create is free (no pod, no charge), so
-retrying hard is safe and correct:
+disks (`--disk`). Only a pod on a network volume needs `create_volume_pod`, which
+retries while its datacenter has no capacity (`--timeout`, default 10 minutes) but
+only for its one `--gpu-type`. To rotate across several GPU types for a volume pod,
+drive `runpod_compat.create_pod` (REST v2) yourself in a **retry loop**. Every failed
+create is free (no pod, no charge), so retrying hard is safe and correct:
 
 ```python
 import runpod_compat as runpod    # REST v2 client; not the pip `runpod` SDK (GraphQL)
 import create_volume_pod as cvp   # reuse IMAGE, DOCKER_ARGS, read_pubkey, find_or_create_volume, record
-AVAIL = ("no longer any instances", "no instances available", "does not have the resources")
 created = None
 while time.time() < deadline and not created:
     try:                                   # ONLY the create in the try —
@@ -123,7 +130,7 @@ while time.time() < deadline and not created:
             start_ssh=True, ports="8888/http,22/tcp",
             docker_args=cvp.DOCKER_ARGS, env={"MACHINE_NAME": bare, "PUBLIC_KEY": pub})
     except Exception as e:
-        if any(k in str(e).lower() for k in AVAIL):
+        if runpod.is_capacity_error(e):       # "no capacity right now"
             time.sleep(3); continue
         ...
     created = res.get("id")

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # show_key — print the shared SSH private key (to hand to participants)
 REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-key_path=$(grep -E '^SHARED_SSH_KEY_PATH=' "$REPO/config.env" | cut -d= -f2- | tr -d '"')
-cat "${key_path/#\~/$HOME}"
+# Read config.env the way the other shell tools do, so ~ and $HOME expand.
+# shellcheck disable=SC1090
+source <(tr -d '\r' < "$REPO/config.env")
+cat "${SHARED_SSH_KEY_PATH/#\~/$HOME}"

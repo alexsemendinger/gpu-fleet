@@ -38,10 +38,9 @@ def _name_order_key():
     That list's order is the proxy port map (index i -> 16000 + i) and so is
     also the order of the ssh config block participants install, and the order
     create_pods fills names in. Sorting by it makes the table line up with all
-    three; the second alphabetical pass (alewife, beacon, everett, dewey,
-    cheetham, howe) is deliberately not in alphabetical order, so a plain
-    sort would scramble it. Pods whose name isn't in the list at all -- e.g.
-    created by hand outside the tooling -- sort last, alphabetically.
+    three, even when the list isn't alphabetical. Pods whose name isn't in the
+    list at all -- e.g. created by hand outside the tooling -- sort last,
+    alphabetically.
     """
     try:
         names = ast.literal_eval(os.environ["MACHINE_NAME_LIST"])
@@ -71,24 +70,26 @@ def _is_billing(status):
 def list_pods():
     # Fetch RunPod pods (best-effort: a RunPod outage must not hide Vast pods)
     pods = []
+    failed = False
     api_key = os.getenv("RUNPOD_API_KEY")
     if not api_key:
         print("# Warning: RUNPOD_API_KEY not set; skipping RunPod pods")
+        failed = True
     else:
         runpod.api_key = api_key
         try:
             print("Fetching pods...")
             pods = runpod.get_pods() or []
         except Exception as e:
-            print(f"# Warning: failed to fetch RunPod pods: {e}")
-            pods = []
+            print(f"# ERROR: failed to fetch RunPod pods: {e}")
+            failed = True
 
     # Fetch Vast pods (best-effort; returns [] with a warning on failure)
     vast_pods = sorted(get_vast_pods(), key=lambda x: x["name"] or "")
 
     if not pods and not vast_pods:
-        print("No pods found")
-        return
+        print("Could not list RunPod pods (see error above)" if failed else "No pods found")
+        return 1 if failed else 0
 
     try:
         runpod_cost = 0.0
@@ -164,4 +165,5 @@ def list_pods():
         print(f"Error: {str(e)}")
 
 if __name__ == "__main__":
-    list_pods()
+    import sys
+    sys.exit(list_pods() or 0)
