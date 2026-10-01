@@ -3,7 +3,7 @@
 
 WHY THIS EXISTS
 ---------------
-The normal fleet (create_new_pods.py / burst_create_pods.py) uses COMMUNITY
+The normal fleet (create_pods.py) uses COMMUNITY
 pods with an *ephemeral* container disk: when the pod is destroyed, its data
 is gone. Some pods need data to survive a nuke + recreate (training
 checkpoints, datasets, long runs). RunPod's answer is a **network volume** —
@@ -175,8 +175,7 @@ def main():
     record(bare, full, vol_id, vol_name, dc, args.volume_size, args.gpu_type,
            args.cloud_type, args.mount, args.vcpu, args.memory, args.disk,
            args.gpu_count)
-    print("\nNext: wait ~2-5 min for the IP, then `update_proxy`, then `podcheck "
-          + bare + "`.")
+    print("\nNext: `ready_pods " + bare + "` (waits for the IP, updates the proxy, checks the pod).")
 
 
 if __name__ == "__main__":

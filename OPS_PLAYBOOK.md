@@ -11,9 +11,10 @@ Claude and humans alike), `NETWORK_VOLUMES.md` (persistent storage).
 
 ## 1. Provisioning a pod
 
-**Retry, and retry across options.** `create_pods` tries once and routinely returns
-nothing — that is normal, not a bug. `burst_create_pods` retries for you. A failed
-create costs nothing and leaves no pod.
+**Retry, and retry across options.** A single create attempt routinely fails for lack
+of capacity — that is normal, not a bug. `create_pods` retries for you, rotating through
+every GPU type under the price cap until each pod lands. A failed create costs nothing
+and leaves no pod.
 
 **Run parallel attempts when someone is waiting.** Two pods hunting the same spec land
 far faster than one. Keep the first that becomes *usable*, terminate the other. It is
@@ -36,7 +37,7 @@ for training work.
 
 **Verify before telling anyone it is up.** The check that counts is, over SSH:
 `nvidia-smi`, `torch.cuda.is_available()`, `torch.cuda.device_count()` (for multi-GPU),
-`df -h` on both `/` and `/workspace`, and `podcheck <name>`. A pod whose CUDA check fails
+`df -h` on both `/` and `/workspace`, and `check_pods <name>`. A pod whose CUDA check fails
 is on a bad host: destroy it and draw another; it will not fix itself.
 
 **Expect SSH to lag the IP by a few minutes.** The image boots (and runs `POD_SETUP_CMD`,
@@ -44,7 +45,7 @@ if set) before `/start.sh` starts sshd. "Connection refused" right after the IP 
 normal; treat it as a problem only after ~10 minutes.
 
 **Get pods up before people arrive.** A cold pod takes 5–20 minutes from create to usable.
-Build the fleet ahead of the session, then `podcheck` it, so participants walk in to
+Build the fleet ahead of the session, then `ready_pods`, so participants walk in to
 working machines.
 
 **Announce readiness proactively.** Tell the user the moment a pod answers. Writing to a
@@ -54,8 +55,8 @@ log file that nobody reads is the same as not checking.
 Boot time and rebuild churn are the operator's cost, not the group's.
 
 **Bring a whole fleet up as independent pipelines, never as a batch.**
-`management/pod_pipeline.sh <name>...` runs one subshell per pod doing
-IP → `update_proxy` → `podcheck` → `deploy_keys`, so each pod advances the moment it is
+`ready_pods` handles each pod separately and in parallel:
+IP → `update_proxy` → `check_pods` → `deploy_keys`, so each pod advances the moment it is
 individually ready and one slow pod never gates the rest. It prints `[<name>] READY` or
 `[<name>] FAILED <stage>` per pod, which is also the honest way to report progress.
 
@@ -116,33 +117,26 @@ discarded; only network volumes survive. Tell participants to push work to GitHu
 HuggingFace (or use a volume) before a pod is stopped or destroyed, and never offer
 "resume" as a way to recover files.
 
-**Schedule every pod's stop at creation time.** Use `at` (system-level, survives the
-session) with a small script per pod calling `stop_pods --include <name>`. Feed it
-`printf 'y\ny\n'` — the wrapper prompts on stdin for both providers and will otherwise
-cancel itself under `at`.
+**Schedule every pod's end at creation time.** Use `at` (system-level, survives the
+session) to run `destroy_pods --yes <name>` when the group's time is up. `--yes` matters:
+without it the command waits for a confirmation that never comes.
 
 **Keep exactly one job per pod.** When a user changes an end time, `atrm` the old job
 before adding the new one, then list jobs and confirm the target. Check the clock first.
 
-**Delete a pod as soon as its group is finished with it — don't leave it stopped.**
-The only thing a stopped pod buys is the chance that a resume returns the same machine,
-and that fails far more often than it works (roughly one in four succeeded in practice:
-"not enough free GPUs on the host machine"). Stopped pods also keep their names reserved,
-and enough of them exhausts `MACHINE_NAME_LIST`.
-
-**Use the right tool for the state you are in.**
-- `nuke_pods` — acts on **running** pods only (stop + destroy). Finds nothing if
-  everything is already stopped.
-- `delete_pods` — acts on **stopped** pods only; `--include`/`--exclude` narrow it.
-- A full teardown from a mixed fleet therefore needs **both**: `nuke_pods`, then
-  `delete_pods`.
+**Destroy pods when a group is done; don't stop them.** The only thing a stopped pod
+buys is the chance that a resume returns the same machine, and that fails far more often
+than it works (roughly one in four succeeded in practice: "not enough free GPUs on the
+host machine"). Stopped pods also keep their names reserved, and enough of them exhausts
+`MACHINE_NAME_LIST`. That's why there is no stop command here. `destroy_pods` also removes
+pods that got stopped some other way (from the RunPod console, or by the provider when
+credit runs out).
 
 **End-of-program teardown, in order:**
-1. `nuke_pods` (kills anything still running, both providers)
-2. `delete_pods` (removes every stopped pod)
-3. Delete every network volume — `DELETE https://api.runpod.io/v2/network-volumes/{id}`
-4. Verify all three are empty: `list_pods`, the volumes endpoint, and `atq`
-5. Confirm no scheduled jobs (`at`, cron) remain that could recreate anything
+1. `destroy_pods --all` (running and stopped pods, both providers)
+2. Delete every network volume — `DELETE https://api.runpod.io/v2/network-volumes/{id}`
+3. Verify all three are empty: `list_pods`, the volumes endpoint, and `atq`
+4. Confirm no scheduled jobs (`at`, cron) remain that could recreate anything
 
 **Volumes are the bill that outlives the program.** Pods stop costing when destroyed;
 volumes charge ~$0.07/GB/month until explicitly deleted (2 TB ≈ $4.80/day). Deleting
@@ -215,7 +209,7 @@ Small overruns near the end are acceptable; surprises are not.
 with `management/openrouter_spend_report.py`. Raising a key's limit does not spend money,
 but it removes the thing that was capping the group.
 
-**Treat a quoted account balance as decaying.** Subtract observed burn (`fleet_report` rate
+**Treat a quoted account balance as decaying.** Subtract observed burn (`pod_costs` rate
 × elapsed) before repeating a figure, or check it fresh. Provider accounts are usually
 prepaid: set up auto-top-up where it exists, because an empty balance stops every pod.
 

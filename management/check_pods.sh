@@ -1,23 +1,29 @@
 #!/usr/bin/env bash
-# podcheck — test SSH connectivity to the pods (+ CUDA availability).
+# check_pods — test SSH connectivity to the pods (+ CUDA availability).
 #
 # Usage:
-#   podcheck                  # test every name in MACHINE_NAME_LIST
-#   podcheck a b c            # single-letter shorthand: first name with that initial
-#   podcheck alder maple      # specific pods by bare name
-#   podcheck a maple b        # mix shorthand and full names
+#   check_pods                  # test every pod that currently exists
+#   check_pods a b c            # single-letter shorthand: first name with that initial
+#   check_pods alder maple      # specific pods by bare name
+#   check_pods a maple b        # mix shorthand and full names
 #
 # Shorthand resolves to the FIRST name in MACHINE_NAME_LIST with that
 # initial; later names sharing an initial must be named in full.
 
-podcheck() {
+check_pods() {
     # shellcheck disable=SC1091
     source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
     local pods=("${MACHINE_NAME_LIST[@]}")
 
     local to_test=()
     if [ $# -eq 0 ]; then
-        to_test=("${pods[@]}")
+        # Only names that have a pod right now: checking the whole list would
+        # report every never-created name as "unreachable".
+        mapfile -t to_test < <(cd "$MGMT" && "$PY" fleet_status.py 2>/dev/null | awk '$1 !~ /^#/ && $2 != "MISSING" {print $1}')
+        if [ "${#to_test[@]}" -eq 0 ]; then
+            echo "No pods exist right now (nothing to check)."
+            return 0
+        fi
     else
         local arg
         for arg in "$@"; do
@@ -71,5 +77,5 @@ podcheck() {
 
 # If run directly (not sourced), call the function with passed args.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    podcheck "$@"
+    check_pods "$@"
 fi

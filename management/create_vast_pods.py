@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create Vast.ai instances that slot into the existing nginx proxy workflow.
 
-Mirrors create_new_pods.py (-n / -a / explicit names) but provisions on
+Mirrors create_pods.py (-n / -a / explicit names) but provisions on
 Vast.ai instead of RunPod. Each instance is created with:
 
   * the same Docker image as RunPod (VASTAI_DOCKER_IMAGE),
@@ -181,7 +181,7 @@ def get_used_pod_names(client=None):
 
 
 def resolve_machine_names(args, prefix, allowed, used_full_names):
-    """Mirror create_new_pods.py name selection, cross-provider-aware."""
+    """Mirror create_pods.py name selection, cross-provider-aware."""
     if args.machine_names:
         # Accept names with or without the "<prefix>-" prefix; we work in bare
         # names and re-add the prefix when labelling the instance.
@@ -195,7 +195,7 @@ def resolve_machine_names(args, prefix, allowed, used_full_names):
         return names
     if args.num_machines:
         # Downstream skip filters out names already in use on either provider,
-        # preserving create_new_pods.py's 'ensure N total' semantic.
+        # preserving create_pods.py's 'ensure N total' semantic.
         return allowed[:args.num_machines]
     if args.add:
         used_short = {n[len(prefix + "-"):] for n in used_full_names
@@ -208,8 +208,9 @@ def resolve_machine_names(args, prefix, allowed, used_full_names):
         chosen = unused[:args.add]
         print(f"Adding {args.add} machines (have {len(used_short)}): {chosen}")
         return chosen
-    print(f"Using default list with {len(allowed)} machines")
-    return allowed[:]
+    # No selection: refuse rather than create a pod for every name in the
+    # list (a fleet-sized spend from one accidental bare invocation).
+    sys.exit("Select pods with -n N, -a N, or explicit names.")
 
 
 def main():

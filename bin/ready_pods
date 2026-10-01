@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# ready_pods — wait for IPs, update the proxy, check and (if keys exist) deploy keys, per pod
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+exec bash "$REPO/management/ready_pods.sh" "$@"

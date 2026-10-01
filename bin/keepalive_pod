@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# keepalive_pod — keep one pod alive and CUDA-healthy (safe to run from cron)
-REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-exec "$REPO/management/keepalive_pod.sh" "$@"

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# destroy_pods — destroy pods (running or stopped) on both providers; asks first unless --yes
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PY="${PY:-$HOME/.venvs/global/bin/python}"; [ -x "$PY" ] || PY=python3
+cd "$REPO/management" && exec "$PY" destroy_pods.py "$@"

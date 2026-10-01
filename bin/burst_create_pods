@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# burst_create_pods — create RunPod pods, retrying across GPU types until each name lands
-REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-PY="${PY:-$HOME/.venvs/global/bin/python}"; [ -x "$PY" ] || PY=python3
-cd "$REPO/management" && exec "$PY" burst_create_pods.py "$@"

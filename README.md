@@ -66,7 +66,7 @@ cp config.env.example config.env        # then edit it — see "Configuration" b
 ssh-keygen -t ed25519 -N "" -C "program shared key" -f ~/.ssh/program_shared
 #    ...and make SHARED_SSH_KEY_PATH in config.env match that path.
 
-# 6. Put the commands on your PATH (list_pods, burst_create_pods, podcheck, ...)
+# 6. Put the commands on your PATH (create_pods, ready_pods, list_pods, ...)
 sudo ./install.sh
 
 # 7. Let this server reach the pods the same way participants do
@@ -78,11 +78,9 @@ Open the proxy port range in your server's firewall (for example
 
 **Test it end to end with one pod** before inviting anyone:
 ```bash
-burst_create_pods alder --max-price 0.30
-list_pods                # wait until alder shows an IP instead of N/A (2–5 min)
-update_proxy
-podcheck alder           # want:  OK   (cuda: yes)
-nuke_pods --include alder
+create_pods alder --max-price 0.30
+ready_pods alder         # want:  [alder] READY   (takes ~5 min)
+destroy_pods alder
 ```
 
 ## One-time setup (participants)
@@ -100,30 +98,27 @@ config block (`ssh_config` prints it). Then they:
 That's it for the whole program. If the key or proxy host ever changes, they redo
 steps 1–2.
 
-A good way to catch setup problems early: keep one pod running before the first
-session (`keepalive_pod alder`) and ask everyone to connect to it once.
+A good way to catch setup problems early: a few days before the first session, start
+one cheap pod (`create_pods alder --max-price 0.20`, then `ready_pods alder`) and ask
+everyone to connect to it once. Destroy it afterwards; one cheap pod costs about
+$4–5 a day.
 
 ## Each session
 
 **Before people arrive** (pods take 5–20 minutes to become usable, so start early):
 ```bash
-burst_create_pods -n 12 --max-price 0.50   # 12 pods on any GPU type under $0.50/hr
-list_pods                                   # wait until every pod has an IP
-update_proxy                                # point the proxy at the new IPs
-podcheck                                    # every pod should say "OK (cuda: yes)"
-deploy_keys                                 # only if pods need API keys (see below)
+create_pods -n 12 --max-price 0.50   # 12 pods, any GPU type up to $0.50/hr; retries until all land
+ready_pods                           # for each pod: wait for its IP, update the proxy,
+                                     # check SSH + GPU, deploy API keys (if any in keys/)
 ```
-`management/pod_pipeline.sh alder birch …` does the list → proxy → check → keys steps
-for each pod independently, so one slow pod doesn't hold up the others.
-
-A pod that fails `podcheck` (`FAIL`, or `cuda: NO`) is almost always a bad machine.
-Destroy it (`nuke_pods --include <name>`) and create it again. Switching GPU type is
-the most reliable way to land on a different machine.
+`ready_pods` prints `[name] READY` or `[name] FAILED …` for each pod. A failed pod is
+almost always a bad machine: `destroy_pods <name>`, `create_pods <name>`, then
+`ready_pods <name>`. If one GPU type keeps failing, steer around it with `create_pods
+--gpu-types`.
 
 **After the session:**
 ```bash
-nuke_pods        # stop and destroy every running pod
-delete_pods      # remove any stopped pods left over
+destroy_pods --all     # lists every pod and asks before destroying them
 ```
 
 > **Pods keep nothing when they're stopped or destroyed.** Tell participants to push
@@ -135,26 +130,21 @@ delete_pods      # remove any stopped pods left over
 
 | Command | What it does |
 |---|---|
-| `burst_create_pods` | Create pods, retrying across GPU types until each one lands. **The default way to create.** `-n N` (first N names), `-a N` (N more), or names; `--max-price`. |
-| `create_pods` | Create pods with one attempt each (prompts y/N). Usually `burst_create_pods` is better. |
-| `create_vast_pods` | Create pods on Vast.ai. |
-| `create_volume_pod` | Create a pod on a persistent network volume. |
+| `create_pods` | Create pods, retrying across GPU types until each one lands. `-n N` (make sure the first N names have pods), `-a N` (N more), or names. `--max-price` caps $/hr per GPU; `--gpu-types`, `--gpu-count`, `--cloud SECURE`, `--disk` for bigger machines. |
+| `ready_pods [names]` | For each new pod: wait for its IP, update the proxy, check SSH + GPU, deploy API keys. No names = all pods. |
+| `check_pods [names]` | Check pods are reachable through the proxy and their GPU works. No names = all pods. |
+| `destroy_pods` | Destroy pods (running or stopped) on both providers: `destroy_pods alder cedar` or `--all`. Asks first; `--yes` to skip. |
 | `list_pods` | Every pod on both providers, with IPs and total hourly cost. |
-| `fleet_report` | How long each pod has been up and roughly what it has cost. |
-| `fleet_status` | One line per name: has an IP, no IP yet, or missing. |
-| `update_proxy` | Point the proxy at the current pod IPs. Run after pods are created or replaced. |
-| `podcheck [names]` | Check each pod is reachable through the proxy and its GPU works. |
-| `deploy_keys` | Copy API keys from `keys/` onto every running pod. |
+| `pod_costs` | How long each pod has been up and roughly what it has cost. |
+| `update_proxy` | Point the proxy at the current pod IPs (`ready_pods` runs it for you). |
+| `deploy_keys` | Copy API keys from `keys/` onto every running pod (`ready_pods` runs it for you). |
 | `ssh_config` | Print the SSH config block for participants. |
 | `show_key` | Print the shared private key for participants. |
-| `stop_pods` | Stop running pods (keeps nothing; only pauses billing). |
-| `delete_pods` | Delete stopped pods. |
-| `nuke_pods` | **Stop and destroy running pods, no prompts.** |
-| `keepalive_pod <name>` | Keep one pod up and healthy, replacing it if needed. |
+| `create_volume_pod` | Create a pod on a persistent network volume (see `NETWORK_VOLUMES.md`). |
+| `create_vast_pods` | Create pods on Vast.ai, as a second source of GPUs. |
 
-The stop/delete/nuke commands take `--include name …` or `--exclude name …`. Names
-can be bare (`alder`) or prefixed (`gpu-alder`). `CLAUDE.md` has the full option
-reference.
+Names can be bare (`alder`) or prefixed (`gpu-alder`). `CLAUDE.md` has the full option
+reference, and a few less common scripts live in `management/`.
 
 ## API keys on the pods (optional)
 
@@ -184,11 +174,11 @@ disable them at the end of the program).
 | `SHARED_SSH_KEY_PATH` | The shared key (the `.pub` next to it is put on every pod). |
 | `MACHINE_NAME_PREFIX` | Pods are named `<prefix>-<name>`. Something short and specific to your program. |
 | `MACHINE_NAME_LIST` | The names, in order. **Only ever add names at the end:** each name's position decides its proxy port, and participants' configs depend on it. |
-| `RUNPOD_GPU_TYPE`, `RUNPOD_CLOUD_TYPE`, `RUNPOD_NUM_GPUS` | Defaults for `create_pods`. |
+| `RUNPOD_GPU_TYPE`, `RUNPOD_CLOUD_TYPE`, `RUNPOD_NUM_GPUS` | Defaults for `create_pods` (`RUNPOD_GPU_TYPE` is the type it tries first). |
 | `RUNPOD_DOCKER_IMAGE` | Pod image. The default, `nickypro/arena-env`, is RunPod's PyTorch image with a conda environment (`arena-env`) of common interpretability and ML libraries preinstalled (`transformer_lens`, `transformers`, `datasets`, `einops`, `peft`, …), so pods are ready to work the moment they boot. It also contains a copy of the ARENA course in `/root/ARENA_3.0`, which is harmless if unused. For a smaller, plain image use `runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04` with `POD_PYTHON="python3"`. Any image works if it starts sshd from the `PUBLIC_KEY` environment variable, as RunPod's official images do. |
 | `RUNPOD_DISK_SPACE_IN_GB`, `RUNPOD_VOLUME_SPACE_IN_GB` | Container disk and persistent pod volume sizes. |
 | `POD_SETUP_CMD` | Optional shell command run at every pod start (e.g. `cd /root/course && git pull`). |
-| `POD_PYTHON` | Python on the pods, used by `podcheck`'s GPU check. Must match the image (`/opt/conda/envs/arena-env/bin/python` for the default). |
+| `POD_PYTHON` | Python on the pods, used by `check_pods`' GPU check. Must match the image (`/opt/conda/envs/arena-env/bin/python` for the default). |
 | `POD_ENV_FILE` | Where `deploy_keys` writes keys on each pod. |
 | `KEY_COHORT` | Label for per-pod OpenRouter keys; change it each program. |
 | `SSH_PROXY_HOST`, `SSH_PROXY_STARTING_PORT` | The proxy server's address, and the port for the first name. |
@@ -200,7 +190,7 @@ Cheap cards (RTX A4000 / A5000 / 3090) cost about $0.17–0.30/hr on RunPod's co
 cloud, so 15 pods for a 5-hour session come to about $15–20. A100s and H100s cost
 several times that per GPU, so they dominate any bill. Create them only when the work
 needs them, and never leave them idle. `list_pods` shows the current hourly total;
-`fleet_report` shows the cost so far. The proxy server is a few dollars a month.
+`pod_costs` shows the cost so far. The proxy server is a few dollars a month.
 
 ## Security
 
@@ -236,9 +226,9 @@ the core scripts: creating, listing, stopping and destroying pods, generating SS
 and the nginx proxy configuration.
 
 Changes since then, made while running it for later programs:
-- `burst_create_pods`, which retries across GPU types when capacity is tight
-- CUDA health checks (`podcheck`), per-pod bring-up (`pod_pipeline.sh`), `fill_fleet.sh`
-  and `keepalive_pod.sh`
+- `create_pods` retrying across GPU types when capacity is tight, and one
+  `destroy_pods` for every pod state
+- CUDA health checks (`check_pods`) and per-pod bring-up (`ready_pods`)
 - Vast.ai support, network-volume pods, `deploy_keys`, per-pod OpenRouter keys, and cost
   reports
 - a RunPod REST API v2 client (`runpod_compat.py`) replacing the pip SDK, whose GraphQL API

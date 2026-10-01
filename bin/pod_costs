@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fleet_report — per-pod uptime and estimated spend so far
+# pod_costs — per-pod uptime and estimated spend so far
 REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 PY="${PY:-$HOME/.venvs/global/bin/python}"; [ -x "$PY" ] || PY=python3
-cd "$REPO/management" && exec "$PY" fleet_report.py "$@"
+cd "$REPO/management" && exec "$PY" pod_costs.py "$@"

@@ -22,6 +22,7 @@ Normalized pod dict:
     }
 """
 import os
+import re
 import warnings
 
 from mydotenv import load_env
@@ -87,6 +88,13 @@ def normalize_instance(inst):
     }
 
 
+
+def _redact(err):
+    """Error text with any API key blanked: the vastai SDK puts the key in the
+    request URL, and HTTP errors echo that URL."""
+    return re.sub(r"(api_key=)[^&\s'\"]+", r"\1<redacted>", str(err))
+
+
 def get_vast_pods(client=None):
     """Return normalized pods for all of this account's Vast instances.
 
@@ -97,7 +105,7 @@ def get_vast_pods(client=None):
         client = client or get_vast_client()
         instances = client.show_instances()
     except Exception as e:  # noqa: BLE001 - never let Vast break RunPod listing
-        print(f"# Warning: failed to fetch Vast.ai instances: {e}")
+        print(f"# Warning: failed to fetch Vast.ai instances: {_redact(e)}")
         return []
 
     pods = []

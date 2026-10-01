@@ -11,7 +11,7 @@ datacenter and can be re-attached to a fresh pod later.
 >    as its volume (`data_center_id` == the volume's `dataCenterId`).
 > 2. Volumes only exist in datacenters with storage support and only attach to
 >    **SECURE-cloud** (datacenter) pods — not community pods. So these cost
->    secure-tier prices and there is no `burst_create_pods` community fallback.
+>    secure-tier prices, with no cheaper community-cloud fallback.
 
 Because the data is the whole point, **every network-volume pod is recorded in
 [`management/network_volumes.json`](management/network_volumes.json)** so we
@@ -36,7 +36,7 @@ create_volume_pod oak \
    RAM and an ephemeral `--disk` (default 100 GB) for the OS/image.
 3. **Record** the pod → volume mapping in `network_volumes.json`.
 
-Then the usual: wait for the IP in `list_pods`, `update_proxy`, `podcheck <name>`.
+Then `ready_pods <name>` (waits for the IP, updates the proxy, checks the pod).
 
 ### Picking a datacenter
 
@@ -99,11 +99,12 @@ when a project truly ends, delete the volume by hand and drop its row from
 
 ## Advanced provisioning (scarce / multi-GPU / big-disk / seeding)
 
-`burst_create_pods` only does COMMUNITY, single-GPU, 100 GB disk, no volume. For
-anything else — SECURE, a network volume, `--gpu-count > 1`, or a large container
-disk — use `create_volume_pod` (volume pods; it takes `--gpu-count/--vcpu/--memory/
---disk`) or drive `runpod_compat.create_pod` (REST v2) directly in a **retry loop**. Every failed
-create is free (no pod, no charge), so retrying hard is safe and correct:
+`create_pods` covers most of this already, with retries: SECURE cloud (`--cloud
+SECURE`), multi-GPU (`--gpu-count`), specific types (`--gpu-types`) and big container
+disks (`--disk`). Only a pod on a network volume needs `create_volume_pod`, and that
+tries once. When a volume pod's GPU is scarce, drive `runpod_compat.create_pod` (REST
+v2) yourself in a **retry loop**. Every failed create is free (no pod, no charge), so
+retrying hard is safe and correct:
 
 ```python
 import runpod_compat as runpod    # REST v2 client; not the pip `runpod` SDK (GraphQL)
@@ -130,8 +131,7 @@ while time.time() < deadline and not created:
 Rotate `gpu_type_id` across variants to widen availability (e.g. H100 `HBM3`→`NVL`→
 `PCIe`; A100 prefer `A100-SXM4-80GB` over `80GB PCIe`, which draws the NO-IP bad host).
 No-volume pods with big models need a big **container disk** (weights + checkpoints
-live there) — a 2×H100 fine-tune box got 500 GB. Then wait for the IP in a
-**backgrounded** waiter (never a foreground `sleep`), `update_proxy`, `podcheck`.
+live there) — a 2×H100 fine-tune box got 500 GB. Then run `ready_pods <name>`.
 
 ### Fresh volume + scarce GPU → race datacenters
 A volume is region-locked, but a scarce GPU (H100 SXM, B200) may not exist in a

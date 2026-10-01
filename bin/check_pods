@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# podcheck — SSH + CUDA health check for pods (see management/check_pods.sh)
+# check_pods — SSH + CUDA health check for pods (see management/check_pods.sh)
 REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 exec bash "$REPO/management/check_pods.sh" "$@"

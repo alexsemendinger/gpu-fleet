@@ -34,68 +34,63 @@ Installed by `install.sh` as symlinks from `bin/` onto the PATH. Each is a thin
 wrapper over a script in `management/` or `proxy/`. **Read this reference or the
 script instead of running `--help`.**
 
-The standard way to bring up a fleet (see "Provisioning when availability is
-tight" below for why `burst_create_pods` is the default):
+A session's fleet, start to finish:
 ```bash
-burst_create_pods -n 12 --max-price 0.50
-# wait ~2–5 min; watch list_pods until every row shows an IP (not N/A)
-update_proxy
-podcheck
-deploy_keys        # only if the pods need API keys
+create_pods -n 12 --max-price 0.50   # retries until all 12 land (run it in the background)
+ready_pods                           # per pod: wait for IP -> update_proxy -> check -> keys
+# ... session ...
+destroy_pods --all
 ```
-Or hand the whole post-create sequence to `management/pod_pipeline.sh <names...>`.
 
 **Never chain a create with `update_proxy` via `&&`.** Pods need minutes after
 creation to get a public IP, and a proxy config generated before the IPs settle
-silently leaves those pods out.
+silently leaves those pods out. `ready_pods` waits for each pod's IP first.
 
 ### Reference
+
+**`create_pods`** — RunPod. Selection (one of): `-n N` makes sure the first N names
+in `MACHINE_NAME_LIST` have pods (creating only the missing ones); `-a N` creates N
+more on unused names; or positional names, bare (`alder`) or prefixed (`gpu-alder`).
+A selection is required. Retries continuously, in parallel, rotating through every
+NVIDIA GPU type at or under `--max-price` (per GPU, default 0.50), with
+`RUNPOD_GPU_TYPE` tried first. Options: `--gpu-types "NVIDIA A40,NVIDIA L40S"` (only
+these), `--gpu-count N`, `--cloud COMMUNITY|SECURE`, `--image`, `--disk N`,
+`--volume N`, `--timeout` (default 1800s). Defaults come from `config.env`. No
+prompt. Prints `[OK] <pod> <- <gpu>` as each lands and a progress line every 15s;
+expect hundreds of silent retries when capacity is scarce. Don't pipe its output
+through anything that closes stdout early (`head`).
+
+**`ready_pods [names...]`** — takes new pods to "ready", each independently and in
+parallel: waits for a public IP, runs `update_proxy` (serialized), runs `check_pods`,
+then `deploy_keys` if `keys/` has CSVs (`WITH_KEYS=0` to skip). No names = every pod
+that exists. Prints `[name] READY` or `[name] FAILED <step>` per pod, plus a summary.
+A FAILED pod is almost always a bad host: `destroy_pods <name> && create_pods <name>`,
+then `ready_pods <name>`.
+
+**`check_pods [names...]`** — SSH + CUDA check through the proxy. No args = every pod
+that exists. Accepts bare names or single-letter shorthand for the first name with
+that initial (`check_pods a m`). `cuda: NO` means a bad host.
+
+**`destroy_pods`** — destroys pods on both providers, whatever state they're in.
+`destroy_pods alder cedar`, or `--all` for every `<prefix>-*` pod (others on the
+account are never touched), with `--exclude name...`. Lists what it will destroy
+and asks first; `--yes` skips the prompt (for `at` jobs and scripts). Verifies
+against the provider afterwards. Everything on a destroyed pod is lost; network
+volumes survive.
 
 **`list_pods`** — table of every pod on both providers, with total hourly spend
 (running pods only). Rows follow `MACHINE_NAME_LIST` order, which is also the proxy
 port order and the order of participants' SSH config.
 
-**`fleet_report`** — per-pod uptime and estimated spend so far, from each provider's
+**`pod_costs`** — per-pod uptime and estimated spend so far, from each provider's
 real start time. est$ = rate × uptime (approximate).
 
-**`fleet_status`** — one machine-readable line per name: `HAS_IP` / `NO_IP` /
-`MISSING`, for scripting.
-
-**`podcheck [names...]`** — SSH + CUDA check through the proxy. No args = every name.
-Accepts bare names (`podcheck alder maple`) or single-letter shorthand for the first
-name with that initial (`podcheck a m`). `cuda: NO` means a bad host: destroy the pod
-and draw another.
-
-**`create_pods`** (→ `management/create_new_pods.py`) — RunPod, one attempt per name,
-prompts `(y/N)` (pipe `printf 'y\n' |` to confirm). Selection:
-`-n N` (first N names), `-a N` (N more on unused names), or positional names, bare
-(`alder`) or prefixed (`gpu-alder`). Overrides: `--gpu-type "NVIDIA A40"` (quote it),
-`--gpu-count N`, `--cloud-type COMMUNITY|SECURE`, `--docker-image`,
-`--disk-space-in-gb N`, `--volume-space-in-gb N`. Often creates nothing when capacity
-is tight — use `burst_create_pods`.
-
-**`burst_create_pods`** — the default creator. Same selection flags as `create_pods`,
-plus `--max-price` (hard cap, default 0.50), `--gpu-types` (comma list),
-`--timeout` (default 1800s). Retries continuously in parallel across every NVIDIA GPU
-type under the cap until each name lands. No prompt; a selection is required. Don't
-pipe its output through anything that closes stdout early (`head`).
-
-**`create_vast_pods`** — Vast.ai. Same selection flags. `--gpu-name RTX_3090`
-(underscores), `--num-gpus`, `--disk`, `--image`, `--max-price` (default $0.60/hr).
+**`create_vast_pods`** — Vast.ai. Same selection flags as `create_pods`, but tries
+once per name. `--gpu-name RTX_3090` (underscores), `--num-gpus`, `--disk`,
+`--image`, `--max-price` (default $0.60/hr).
 
 **`create_volume_pod <name>`** — a SECURE pod on a persistent network volume; see
 `NETWORK_VOLUMES.md`. Re-running with the same name reuses the same volume.
-
-**`stop_pods`** — stops running pods on both providers. **A stopped pod keeps no
-data**; this is only useful to pause billing when the pod may be resumed soon.
-`--include` / `--exclude` narrow it.
-
-**`delete_pods`** — deletes already-stopped pods on both providers (never touches
-running ones). `--include` / `--exclude` narrow it.
-
-**`nuke_pods`** — **destructive**: stops and destroys running pods on both providers,
-no prompts. `--include` / `--exclude`, `--timeout 300` (RunPod side). A full teardown
-of a mixed fleet is `nuke_pods` then `delete_pods`.
 
 **`deploy_keys`** (→ `management/copy_api_keys.py`) — see below. `--pod <prefix>-X`
 (repeatable) restricts it; `--max-parallel N` (default 30).
@@ -108,15 +103,13 @@ per name, each pinned to its proxy port).
 
 **`show_key`** — prints the shared private SSH key to hand to participants.
 
-**`keepalive_pod <name>`** — makes sure one named pod is up and CUDA-healthy,
-replacing it if not. Safe to run from cron (e.g. a "test your SSH setup" pod before
-the first session).
-
-Other scripts, run directly: `management/fill_fleet.sh` (drive every name to
-passing, unattended), `management/run_cmd.sh <cmd>` (run on every pod),
-`management/gpu-top.sh` (live GPU use across the fleet), `management/tree_relay.sh`
-(copy a model cache pod-to-pod), `management/generate_openrouter_keys.py` and
-`management/openrouter_spend_report.py` (per-pod OpenRouter keys and their spend).
+Scripts without a shortcut, run directly: `management/run_cmd.sh <cmd>` (run a
+command on every pod), `management/gpu-top.sh` (live GPU use across the fleet),
+`management/tree_relay.sh` (copy a model cache pod-to-pod),
+`management/fleet_status.py` (one machine-readable line per name, for scripts),
+`management/generate_openrouter_keys.py` and `management/openrouter_spend_report.py`
+(per-pod OpenRouter keys and their spend). Stopping a pod (rarely useful, since it
+keeps no data) is `runpod_compat.stop_pod(<id>)`.
 
 ---
 
@@ -150,29 +143,29 @@ and missing CSVs are skipped silently.
 
 This is the **normal** case, not the exception.
 
-**What you'll see.** `create_pods -n 12` reports errors like:
+**What you'll see.** Individual create attempts fail with errors like:
 - `There are no longer any instances available with the requested specifications.`
 - `This machine does not have the resources to deploy your pod.`
 
 Both mean "no capacity for that GPU type right now" — not a bug, not a config
 problem. Capacity churns second to second, so the fix is to **retry hard and spread
-across GPU types and providers.**
+across GPU types and providers**, which is what `create_pods` does.
 
 **Why aggressive retrying is safe:**
 1. **A failed RunPod create costs nothing and leaves no pod.** There is no
    half-created or billed-but-stuck state.
 2. **Community prices are fixed per GPU type.** To stay under $X/hr, restrict which
    types you try. Roughly a dozen NVIDIA types (A4000, A5000, 3090, 4090, A6000, A40,
-   …) are usually under $0.50/hr on community cloud, and `burst_create_pods` reads the
+   …) are usually under $0.50/hr on community cloud, and `create_pods` reads the
    live price list itself. Don't pin a single type when supply is short. Skip AMD and
    MIG slices; the images are CUDA-only.
 3. **Vast.ai is a second source**, but its cheap supply is often thin, and its query
    syntax is unreliable for filtering; filter offers in Python instead. Don't burn
    time forcing Vast for one marginal pod if RunPod is delivering.
 
-Run `burst_create_pods` in the background and watch it: it prints `[OK] <pod> <- <gpu>`
-as each lands, with a progress line every 15s. Expect minutes and hundreds of silent
-retries per pod when capacity is scarce — let it grind.
+Run `create_pods` in the background and watch it. Expect minutes and hundreds of
+silent retries per pod when capacity is scarce — let it grind. If a type keeps landing
+on bad hosts, steer around it with `--gpu-types`.
 
 ---
 

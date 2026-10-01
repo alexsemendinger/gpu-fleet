@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# create_pods — create RunPod pods, one attempt per name (prompts y/N)
+# create_pods — create RunPod pods, retrying across GPU types until each one lands
 REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 PY="${PY:-$HOME/.venvs/global/bin/python}"; [ -x "$PY" ] || PY=python3
-cd "$REPO/management" && exec "$PY" create_new_pods.py "$@"
+cd "$REPO/management" && exec "$PY" create_pods.py "$@"

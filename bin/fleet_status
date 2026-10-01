@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# fleet_status — one line per name: HAS_IP / NO_IP / MISSING
-REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-PY="${PY:-$HOME/.venvs/global/bin/python}"; [ -x "$PY" ] || PY=python3
-cd "$REPO/management" && exec "$PY" fleet_status.py "$@"
