@@ -173,6 +173,7 @@ disable them at the end of the program).
 |---|---|
 | `RUNPOD_API_KEY`, `VASTAI_API_KEY` | Provider keys. Leave Vast blank to use RunPod only. |
 | `SHARED_SSH_KEY_PATH` | The shared key (the `.pub` next to it is put on every pod). |
+| `SSH_USER`, `SSH_PROXY_USER` | The login user on the pods (`root` for RunPod and Vast images); used by the tools and in participants' SSH config. |
 | `MACHINE_NAME_PREFIX` | Pods are named `<prefix>-<name>`. Something short and specific to your program. |
 | `MACHINE_NAME_LIST` | The names, in order. **Only ever add names at the end:** each name's position decides its proxy port, and participants' configs depend on it. |
 | `RUNPOD_GPU_TYPE`, `RUNPOD_CLOUD_TYPE`, `RUNPOD_NUM_GPUS` | Defaults for `create_pods` (`RUNPOD_GPU_TYPE` is the type it tries first). |
